@@ -8,11 +8,6 @@ import com.morpheusdata.views.HTMLResponse
 import com.morpheusdata.views.ViewModel
 import groovy.util.logging.Slf4j
 
-/**
- * Tab "Connection Details" cho Instance:
- * - Lấy host hypervisor + SSH info từ ComputeServer
- * - Username / Password / Database lấy từ evars của TaskConfig
- */
 @Slf4j
 class NonameInstanceTabProvider extends AbstractInstanceTabProvider {
     final Plugin plugin
@@ -31,11 +26,11 @@ class NonameInstanceTabProvider extends AbstractInstanceTabProvider {
 
     @Override
     Boolean show(Instance instance, User user, Account account) {
-        // Nếu muốn ẩn tab trong một số trường hợp thì xử lý ở đây
         return true
     }
 
-    private String evarToString(Object val) {
+    // helper: convert evar value -> String
+    /*private String evarToString(Object val) {
         if(val == null)
             return null
         if(val instanceof String)
@@ -45,20 +40,18 @@ class NonameInstanceTabProvider extends AbstractInstanceTabProvider {
         if(val instanceof byte[])
             return new String((byte[])val, 'UTF-8')
         return val.toString()
-    }
+    }*/
 
     @Override
     HTMLResponse renderTemplate(Instance instance) {
         ViewModel model = new ViewModel()
         try {
-            // Build TaskConfig cho instance
             TaskConfig cfg = morpheus
                 .buildInstanceConfig(instance, [:], null, [], [:])
                 .blockingGet()
 
             TaskConfig.InstanceConfig ic = cfg?.instance
 
-            // Lấy ServerConfig đầu tiên trong containers
             TaskConfig.ServerConfig serverCfg = ic?.containers
                 ?.collect { it?.server }
                 ?.find { it != null }
@@ -66,27 +59,23 @@ class NonameInstanceTabProvider extends AbstractInstanceTabProvider {
             ComputeServer hypervisor = null
             ComputeServer vmServer   = null
 
-            if (serverCfg != null) {
-                // Hypervisor host
-                if (serverCfg.parentServerId != null) {
+            if(serverCfg != null) {
+                if(serverCfg.parentServerId != null) {
                     hypervisor = morpheus.services.computeServer
                         .get(serverCfg.parentServerId as Long)
                 }
-                // Guest VM
-                if (serverCfg.id != null) {
+                if(serverCfg.id != null) {
                     vmServer = morpheus.services.computeServer
                         .get(serverCfg.id as Long)
                 }
             }
 
-            // HOST hiển thị giống cột “Host” ngoài Instances
             String hypervisorHost =
                     hypervisor?.externalIp ?:
                     hypervisor?.internalIp ?:
                     hypervisor?.name ?:
                     'N/A'
 
-            // Host dùng để SSH vào VM
             String sshHost =
                     vmServer?.sshHost ?:
                     vmServer?.externalIp ?:
@@ -96,47 +85,42 @@ class NonameInstanceTabProvider extends AbstractInstanceTabProvider {
             Integer sshPort = vmServer?.sshPort ?: 22
             String sshUsername = vmServer?.sshUsername ?: 'cloud'
 
-            // ===== LẤY GIÁ TRỊ TỪ EVARS =====
-            // cfg.getEvars() trả về Map<String, TaskConfig.Evar>
+            // ===== EVARS =====
             Map evars = cfg?.getEvars() ?: [:]
 
-            String evarUsername = evarToString(evars['username']?.value)
+            // CUSTOM OPTIONS (catalog for DEMO)
+            Map customOptions = cfg?.getCustomOptions() ?: [:]
+            log.debug("NonameInstanceTab: customOptions=${customOptions}")
+            String optUsername = (customOptions['username'] ?: null) as String
+            String optPassword = (customOptions['password'] ?: null) as String
+            String optDatabase = (customOptions['database'] ?: null) as String
+            String optHost     = (customOptions['host'] ?: null) as String
+            String optPort     = (customOptions['port'] ?: null) as String
+            /*String evarUsername = evarToString(evars['username']?.value)
             String evarPassword = evarToString(evars['password']?.value)
             String evarDatabase = evarToString(evars['database']?.value)
-
-            // Helper lấy evar theo tên, có thì trả value.toString(), không thì null
-            def getEvarVal = { String name ->
-                def ev = evars[name]
-                ev ? ev.value?.toString() : null
-            }
-
-            // Ưu tiên các tên chuẩn DB_*, fallback sang tên thường nếu có
-            String username =
-                    getEvarVal('DB_USERNAME') ?:
-                    getEvarVal('USERNAME') ?:
-                    getEvarVal('username') ?:
-                    'N/A'
-
-            String password =
-                    getEvarVal('DB_PASSWORD') ?:
-                    getEvarVal('PASSWORD') ?:
-                    getEvarVal('password') ?:
-                    'N/A'
-
-            String database =
-                    getEvarVal('DB_DATABASE') ?:
-                    getEvarVal('DATABASE') ?:
-                    getEvarVal('database') ?:
-                    'N/A'
-
+*/
+            /*String username = evarUsername ?: 'N/A'
+            String password = evarPassword ?: 'N/A'
+            String database = evarDatabase ?: 'N/A'
+*/
+            String username = optUsername ?: 'N/A'
+            String password = optPassword ?: 'N/A'
+            String database = optDatabase ?: 'N/A'
+            String dbHost   = optHost ?: sshHost
+            String dbPort   = optPort ?: sshPort.toString()
             Map data = [
                 hypervisorHost: hypervisorHost,
                 sshHost       : sshHost,
                 sshPort       : sshPort,
                 sshUsername   : sshUsername,
+
                 username      : username,
                 password      : password,
                 database      : database,
+                host          : dbHost,
+                port          : dbPort,
+
                 instanceName  : instance?.name ?: 'Instance'
             ]
 
